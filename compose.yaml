@@ -1,0 +1,65 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ytttbot}
+      POSTGRES_USER: ${POSTGRES_USER:-ytttbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Добавьте POSTGRES_PASSWORD в .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    logging: *logging
+
+  bot-api:
+    build:
+      context: .
+      dockerfile: docker/bot-api.Dockerfile
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:?Добавьте TELEGRAM_API_ID в .env}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:?Добавьте TELEGRAM_API_HASH в .env}
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - bot-api-data:/var/lib/telegram-bot-api
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *logging
+
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      BOT_API_BASE_URL: http://bot-api:8081
+      DOWNLOAD_DIR: /app/downloads
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-ytttbot}
+      POSTGRES_USER: ${POSTGRES_USER:-ytttbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Добавьте POSTGRES_PASSWORD в .env}
+    volumes:
+      - ./downloads:/app/downloads
+    depends_on:
+      bot-api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 45s
+    logging: *logging
+
+volumes:
+  bot-api-data:
+  postgres-data:
